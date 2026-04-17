@@ -1,0 +1,85 @@
+#!/bin/bash
+# ==============================================================================
+# Ink On Paper v1.0.0
+# A minimalist tool for traditional PDF signing via ImageMagick.
+# ==============================================================================
+
+# Configuration
+DPI=300
+
+usage() {
+    echo "Usage:"
+    echo "  Step 1: $0 preview <input_pdf> <page_num>"
+    echo "  Step 2: $0 prepare-sig <raw_sig_img> <output_sig_png> [resize_pct] [fuzz_pct]"
+    echo "  Step 3: $0 sign <preview_img> <prepared_sig_png> <output_pdf> <x> <y> <compression>"
+    echo ""
+    echo "Example Workflow:"
+    echo "  $0 preview doc.pdf 0"
+    echo "  $0 prepare-sig my_scan.jpg sig_clean.png 50% 20%"
+    echo "  $0 sign preview_page_0.png sig_clean.png signed.pdf 1200 2500 jpeg"
+    exit 1
+}
+
+case "$1" in
+    preview)
+        # Step 1: Create a high-res raster 'canvas' from the PDF page
+        # Using -background white and -alpha remove to prevent invalid bKGD chunks
+        PDF_IN=$2
+        PAGE=$3
+        OUT_IMG="preview_page_${PAGE}.png"
+        
+        echo "[Step 1] Creating canvas from PDF page $PAGE..."
+        magick -density $DPI "$PDF_IN[$PAGE]" \
+               -background white -alpha remove -flatten \
+               -strip "$OUT_IMG"
+        
+        echo "Success: $OUT_IMG created. Use this for measuring coordinates."
+        ;;
+
+    prepare-sig)
+        # Step 2: Process raw signature to be transparent and trimmed
+        RAW_SIG=$2
+        CLEAN_SIG=$3
+        RESIZE=${4:-100%}
+        FUZZ=${5:-15%}
+
+        echo "[Step 2] Cleaning signature and removing background..."
+        # -fuzz handles off-white colors, -transparent creates alpha, -trim crops whitespace
+        magick "$RAW_SIG" \
+               -fuzz "$FUZZ" -transparent white \
+               -resize "$RESIZE" -trim \
+               -strip "$CLEAN_SIG"
+        
+        echo "Success: Cleaned signature saved to $CLEAN_SIG"
+        ;;
+
+    sign)
+        # Step 3: Composite the signature onto the canvas image and convert to PDF
+        CANVAS_IMG=$2
+        SIG_PNG=$3
+        OUTPUT_PDF=$4
+        X=$5
+        Y=$6
+        COMP=$7
+
+        # Compression selection logic
+        if [ "$COMP" == "jpeg" ]; then
+            COMP_FLAGS="-compress jpeg -quality 85"
+        else
+            COMP_FLAGS="-compress zip" # Lossless Deflate
+        fi
+
+        echo "[Step 3] Stamping signature at ($X, $Y) and converting to PDF..."
+        # We use the canvas created in Step 1 to ensure coordinate consistency
+        magick "$CANVAS_IMG" "$SIG_PNG" \
+               -geometry +"$X"+"$Y" -composite \
+               -density $DPI $COMP_FLAGS \
+               -strip "$OUTPUT_PDF"
+        
+        echo "Success: Final signed document created at $OUTPUT_PDF"
+        ;;
+
+    *)
+        usage
+        ;;
+esac

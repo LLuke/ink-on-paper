@@ -1,0 +1,14 @@
+# Don't check in signatures
+*.png
+*.bmp
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+
+# Don't check in Documents
+*.pdf
+*.rtf
+*.doc
+*.docx
+*.odt
